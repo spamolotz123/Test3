@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>2D Side Scroller - Illustrated Character</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body {
+            margin: 0;
+            padding: 10px;
+            background-color: #111;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+            overflow: hidden;
+        }
+        #game-container {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            border: 3px solid #fff;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            background-color: #87CEEB;
+            display: block;
+            width: 100%;
+            height: auto;
+            max-height: 60vh;
+            aspect-ratio: 2 / 1;
+        }
+        .touch-controls {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+            padding: 0 10px;
+        }
+        .d-pad, .action-pad {
+            display: flex;
+            gap: 12px;
+        }
+        .btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            color: white;
+            font-size: 22px;
+            font-weight: bold;
+            border-radius: 12px;
+            width: 65px;
+            height: 65px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+        .btn:active, .btn.pressed {
+            background: rgba(255, 255, 255, 0.5);
+            transform: scale(0.95);
+        }
+        .btn-restart {
+            width: auto;
+            padding: 0 15px;
+            font-size: 16px;
+            background: rgba(220, 50, 50, 0.6);
+            border-color: rgba(255, 100, 100, 0.8);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    
+    <div class="touch-controls">
+        <div class="d-pad">
+            <div class="btn" id="btn-left">◀</div>
+            <div class="btn" id="btn-right">▶</div>
+        </div>
+        <div class="btn btn-restart" id="btn-restart">↺ Restart</div>
+        <div class="action-pad">
+            <div class="btn" id="btn-jump">JUMP</div>
+        </div>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const GROUND_Y = 320;
+let score = 0;
+let gameOver = false;
+let animTimer = 0;
+
+const player = {
+    x: 100,
+    y: GROUND_Y,
+    baseWidth: 36,
+    baseHeight: 70,
+    velX: 0,
+    velY: 0,
+    isGrounded: false,
+    weightLevel: 0,
+    maxWeight: 5,
+    facingRight: true
+};
+
+class Enemy {
+    constructor() {
+        this.reset();
+    }
+
+    reset() {
+        this.x = canvas.width + Math.random() * 200;
+        this.y = GROUND_Y - 15;
+        this.size = 32;
+        this.speed = 3 + Math.random() * 2;
+        this.type = Math.floor(Math.random() * 3);
+    }
+
+    update() {
+        this.x -= this.speed;
+        if (this.x + this.size < 0) {
+            this.reset();
+            score += 10;
+        }
+    }
+
+    draw() {
+        ctx.save();
+        if (this.type === 0) { // Burger
+            ctx.fillStyle = '#D2691E';
+            ctx.beginPath();
+            ctx.arc(this.x + 16, this.y + 10, 14, Math.PI, 0, false);
+            ctx.fill();
+            ctx.fillStyle = '#228B22'; // Lettuce
+            ctx.fillRect(this.x + 2, this.y + 10, 28, 4);
+            ctx.fillStyle = '#8B4513'; // Patty
+            ctx.fillRect(this.x + 2, this.y + 14, 28, 6);
+            ctx.fillStyle = '#FFD700'; // Cheese
+            ctx.fillRect(this.x + 4, this.y + 20, 24, 3);
+            ctx.fillStyle = '#D2691E'; // Bottom Bun
+            ctx.fillRect(this.x + 2, this.y + 23, 28, 7);
+        } else if (this.type === 1) { // Pizza
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.moveTo(this.x + 16, this.y);
+            ctx.lineTo(this.x, this.y + 30);
+            ctx.lineTo(this.x + 32, this.y + 30);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = '#C0392B';
+            ctx.beginPath();
+            ctx.arc(this.x + 16, this.y + 20, 5, 0, Math.PI * 2);
+            ctx.arc(this.x + 10, this.y + 26, 4, 0, Math.PI * 2);
+            ctx.arc(this.x + 22, this.y + 26, 4, 0, Math.PI * 2);
+            ctx.fill();
+        } else { // Donut
+            ctx.fillStyle = '#FF69B4';
+            ctx.beginPath();
+            ctx.arc(this.x + 16, this.y + 16, 15, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#87CEEB';
+            ctx.beginPath();
+            ctx.arc(this.x + 16, this.y + 16, 5, 0, Math.PI * 2);
+            ctx.fill();
+            // Sprinkles
+            ctx.fillStyle = '#FFF';
+            ctx.fillRect(this.x + 10, this.y + 8, 4, 2);
+            ctx.fillRect(this.x + 18, this.y + 10, 4, 2);
+            ctx.fillRect(this.x + 12, this.y + 22, 4, 2);
+        }
+        ctx.restore();
+    }
+}
+
+const enemies = [new Enemy(), new Enemy()];
+
+const inputs = { left: false, right: false, jump: false };
+
+window.addEventListener('keydown', e => {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') inputs.left = true;
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') inputs.right = true;
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') inputs.jump = true;
+    if (e.code === 'KeyR') restartGame();
+});
+window.addEventListener('keyup', e => {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') inputs.left = false;
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') inputs.right = false;
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') inputs.jump = false;
+});
+
+function bindTouchButton(elementId, inputKey) {
+    const btn = document.getElementById(elementId);
+    const start = (e) => { e.preventDefault(); inputs[inputKey] = true; btn.classList.add('pressed'); };
+    const end = (e) => { e.preventDefault(); inputs[inputKey] = false; btn.classList.remove('pressed'); };
+    btn.addEventListener('touchstart', start, { passive: false });
+    btn.addEventListener('touchend', end, { passive: false });
+    btn.addEventListener('mousedown', start);
+    btn.addEventListener('mouseup', end);
+}
+
+bindTouchButton('btn-left', 'left');
+bindTouchButton('btn-right', 'right');
+bindTouchButton('btn-jump', 'jump');
+
+document.getElementById('btn-restart').addEventListener('click', restartGame);
+document.getElementById('btn-restart').addEventListener('touchstart', (e) => { e.preventDefault(); restartGame(); }, { passive: false });
+
+function restartGame() {
+    player.weightLevel = 0;
+    player.x = 100;
+    player.y = GROUND_Y;
+    player.velY = 0;
+    gameOver = false;
+    score = 0;
+    enemies.forEach(e => e.reset());
+}
+
+function update() {
+    if (gameOver) return;
+    animTimer += 0.15;
+
+    const speed = Math.max(0, 5 - player.weightLevel);
+    const jumpPower = -12 + (player.weightLevel * 1.8);
+
+    if (inputs.left) {
+        player.x -= speed;
+        player.facingRight = false;
+    }
+    if (inputs.right) {
+        player.x += speed;
+        player.facingRight = true;
+    }
+
+    if (inputs.jump && player.isGrounded && player.weightLevel < player.maxWeight) {
+        player.velY = jumpPower;
+        player.isGrounded = false;
+    }
+
+    player.velY += 0.6;
+    player.y += player.velY;
+
+    const currentW = player.baseWidth + (player.weightLevel * 16);
+    const currentH = player.baseHeight + (player.weightLevel * 4);
+
+    if (player.y + currentH >= GROUND_Y + player.baseHeight) {
+        player.y = GROUND_Y + player.baseHeight - currentH;
+        player.velY = 0;
+        player.isGrounded = true;
+    }
+
+    if (player.x < 0) player.x = 0;
+    if (player.x + currentW > canvas.width) player.x = canvas.width - currentW;
+
+    if (player.weightLevel >= player.maxWeight) {
+        gameOver = true;
+    }
+
+    enemies.forEach(enemy => {
+        enemy.update();
+        if (
+            player.x < enemy.x + enemy.size &&
+            player.x + currentW > enemy.x &&
+            player.y < enemy.y + enemy.size &&
+            player.y + currentH > enemy.y
+        ) {
+            if (player.weightLevel < player.maxWeight) {
+                player.weightLevel++;
+                enemy.reset();
+            }
+        }
+    });
+}
+
+function drawPlayer() {
+    const stage = player.weightLevel;
+    const bodyWidth = player.baseWidth + (stage * 16);
+    const totalHeight = player.baseHeight + (stage * 4);
+    
+    ctx.save();
+    ctx.translate(player.x + bodyWidth / 2, player.y);
+
+    if (!player.facingRight) {
+        ctx.scale(-1, 1);
+    }
+
+    const headRadius = 13;
+    const neckY = headRadius * 2 - 2;
+    const torsoHeight = totalHeight - (headRadius * 2) - 18;
+    const torsoWidth = 20 + (stage * 15);
+    const hipY = neckY + torsoHeight;
+
+    // --- Legs ---
+    const legOffset = Math.sin(animTimer) * 6 * (inputs.left || inputs.right ? 1 : 0);
+    ctx.fillStyle = '#2C3E50';
+    // Left Leg & Shoe
+    ctx.fillRect(-torsoWidth / 3 - 3, hipY, 8 + stage, 18);
+    ctx.fillStyle = '#E74C3C';
+    ctx.fillRect(-torsoWidth / 3 - 5 + legOffset, hipY + 14, 11 + stage, 5);
+    
+    // Right Leg & Shoe
+    ctx.fillStyle = '#2C3E50';
+    ctx.fillRect(torsoWidth / 3 - 5, hipY, 8 + stage, 18);
+    ctx.fillStyle = '#E74C3C';
+    ctx.fillRect(torsoWidth / 3 - 5 - legOffset, hipY + 14, 11 + stage, 5);
+
+    // --- Torso / Shirt ---
+    ctx.fillStyle = '#2980B9';
+    ctx.beginPath();
+    ctx.ellipse(0, neckY + torsoHeight / 2, torsoWidth / 2, torsoHeight / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Shirt Neckline
+    ctx.fillStyle = '#1A5276';
+    ctx.beginPath();
+    ctx.arc(0, neckY + 4, 7, 0, Math.PI);
+    ctx.fill();
+
+    // --- Arms ---
+    ctx.fillStyle = '#F5CBA7';
+    // Arms sway slightly while walking
+    const armAngle = Math.sin(animTimer) * 0.3 * (inputs.left || inputs.right ? 1 : 0);
+    
+    // Left Arm
+    ctx.save();
+    ctx.translate(-torsoWidth / 2 + 2, neckY + 6);
+    ctx.rotate(-0.2 + armAngle);
+    ctx.fillRect(-4, 0, 6, 18);
+    ctx.restore();
+
+    // Right Arm
+    ctx.save();
+    ctx.translate(torsoWidth / 2 - 2, neckY + 6);
+    ctx.rotate(0.2 - armAngle);
+    ctx.fillRect(-2, 0, 6, 18);
+    ctx.restore();
+
+    // --- Head & Skin ---
+    ctx.fillStyle = '#F5CBA7';
+    ctx.beginPath();
+    ctx.arc(0, headRadius, headRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = '#2C3E50';
+    ctx.beginPath();
+    ctx.arc(4, headRadius - 2, 2.5, 0, Math.PI * 2);
+    ctx.arc(-4, headRadius - 2, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Smile / Expression
+    ctx.strokeStyle = '#A04000';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    if (stage >= 4) {
+        // Tired expression at max weight
+        ctx.arc(0, headRadius + 6, 3, Math.PI, 0);
+    } else {
+        ctx.arc(0, headRadius + 2, 4, 0.1, Math.PI - 0.1);
+    }
+    ctx.stroke();
+
+    // --- Red Hair / Ponytail ---
+    ctx.fillStyle = '#E65100'; // Vibrant Red/Orange
+    // Main Hair Cap
+    ctx.beginPath();
+    ctx.arc(0, headRadius - 2, headRadius + 2, Math.PI * 0.85, Math.PI * 2.15);
+    ctx.fill();
+
+    // Bangs
+    ctx.beginPath();
+    ctx.ellipse(-3, headRadius - 10, 8, 4, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(4, headRadius - 10, 7, 4, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Side Hair / Flowing Locks
+    ctx.beginPath();
+    ctx.ellipse(-headRadius - 1, headRadius + 2, 4, 10, 0.2, 0, Math.PI * 2);
+    ctx.ellipse(headRadius + 1, headRadius + 2, 4, 10, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function draw() {
+    ctx.fillStyle = '#87CEEB';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#228B22';
+    ctx.fillRect(0, GROUND_Y + player.baseHeight, canvas.width, canvas.height - (GROUND_Y + player.baseHeight));
+
+    drawPlayer();
+    enemies.forEach(enemy => enemy.draw());
+
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(`Score: ${score}`, 20, 30);
+    ctx.fillText(`Weight Stage: ${player.weightLevel} / ${player.maxWeight}`, 20, 55);
+
+    if (gameOver) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#FFF';
+        ctx.font = 'bold 36px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('IMMOBILE - GAME OVER!', canvas.width / 2, canvas.height / 2 - 10);
+
+        ctx.font = '20px sans-serif';
+        ctx.fillText('You ate too much food and can no longer move!', canvas.width / 2, canvas.height / 2 + 30);
+        ctx.fillText('Tap "Restart" or press "R" to try again', canvas.width / 2, canvas.height / 2 + 70);
+        ctx.textAlign = 'left';
+    }
+}
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+
+</body>
+</html>
